@@ -198,6 +198,13 @@ propcache==0.4.1
 protobuf==6.33.5
 psutil==6.0.0
 ptyprocess==0.7.0
+themefinder
+python-dotenv
+langchain-ollama
+scikit-learn
+themefinder==0.8.2
+pandas<3
+python-dotenv
 pure_eval==0.2.3
 py-serializable==2.1.0
 pycparser==2.22
