@@ -39,3 +39,10 @@ def test_matches_sklearn():
     assert precision(y_true, y_pred) == pytest.approx(precision_score(y_true, y_pred))
     assert recall(y_true, y_pred) == pytest.approx(recall_score(y_true, y_pred))
     assert f1(y_true, y_pred) == pytest.approx(sk_f1(y_true, y_pred))
+
+def test_precision_and_recall_differ():
+    y_true = [1, 1, 1, 1, 0, 0]
+    y_pred = [1, 1, 0, 0, 0, 1]
+    # TP=2, FP=1, FN=2
+    assert precision(y_true, y_pred) == pytest.approx(2 / 3)
+    assert recall(y_true, y_pred) == pytest.approx(0.5)

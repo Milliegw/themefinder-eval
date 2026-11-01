@@ -1,3 +1,5 @@
+import random
+
 # Precision, recall and f1 score calculations
 
 # Calculate TP/TN
@@ -43,3 +45,18 @@ def f1(y_true, y_pred):
     if prec + rec == 0:
         return 0.0  # F1 score is undefined when both precision and recall are zero
     return 2 * (prec * rec) / (prec + rec)
+
+def bootstrap_ci(y_true, y_pred, metric, n_resamples=1000, confidence=0.95, seed=None):
+    """Return (low, high) bootstrap confidence interval for metric(y_true, y_pred)."""
+    rng = random.Random(seed)
+    n = len(y_true)
+    scores = []
+    for _ in range(n_resamples):
+        picks = rng.choices(range(n), k=n)            # resample pairs, with replacement
+        scores.append(metric([y_true[i] for i in picks],
+                             [y_pred[i] for i in picks]))
+    scores.sort()
+    tail = (1 - confidence) / 2                       # 0.025 for a 95% interval
+    low = scores[int(tail * n_resamples)]
+    high = scores[int((1 - tail) * n_resamples) - 1]
+    return low, high
