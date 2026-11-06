@@ -51,3 +51,32 @@ for i, response in enumerate(responses):
 
 print(f'CounterThemes: {CounterThemes}')
 print(f'total_themeCount: {total_themeCount}')
+
+responses = [
+    {"id": 1, "text": "Bus fares are too expensive for families on low incomes.", "themes": ["fares"]},
+    {"id": 2, "text": "Services in my village were cut and now I can't get to work.", "themes": ["cuts"]},
+    {"id": 3, "text": "Buses are often late, so I've started driving instead.", "themes": ["reliability"]},
+    {"id": 4, "text": "Cheaper fares would help, but reliability matters more.", "themes": ["fares", "reliability"]},
+    {"id": 5, "text": "There should be more evening services for shift workers.", "themes": ["evening"]},
+    {"id": 6, "text": "I can't use the bus because the stop isn't accessible.", "themes": ["accessibility"]}
+]
+
+def find_fares_responses(responses):
+    return [response["id"] for response in responses if "fares" in response["themes"]]
+
+def count_multi_theme_responses(responses):
+    return sum(1 for response in responses if len(response["themes"]) > 1)
+
+def sort_by_text_length_then_id_desc(responses):
+    return sorted(responses, key=lambda r: (len(r["text"]), -r["id"]))
+
+def main():
+    fares_ids = find_fares_responses(responses)
+    multi_theme_count = count_multi_theme_responses(responses)
+    sorted_responses = sort_by_text_length_then_id_desc(responses)
+
+    print(f"Fares response IDs: {fares_ids}")
+    print(f"Responses with more than one theme: {multi_theme_count}")
+    print(sorted_responses)
+
+main()

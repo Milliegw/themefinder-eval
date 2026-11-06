@@ -1,6 +1,6 @@
 import json
 
-from runs.compare_runs import summarize_run
+from compare_runs import summarize_run
 
 
 def test_summarize_run_includes_theme_details():
