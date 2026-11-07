@@ -57,11 +57,20 @@ We want to:
 
 ### Evaluation and comparison
 
+- `run_themefinder_test.py`
+  - Runs the project-specific ThemeFinder pipeline against `data/golden/themefinder_input.csv`.
+  - Saves the JSON output into `runs/`.
+
+- `compare_themefinder_gold.py`
+  - Reads the most recent ThemeFinder JSON output and compares it against the reviewed gold set.
+  - Maps the human gold themes into the ThemeFinder topic taxonomy (A-H) before scoring.
+  - Prints the per-theme precision/recall/F1 values and writes a Markdown report into `runs/*.md`.
+
 - `compare_runs.py`
   - Compares ThemeFinder outputs across runs.
 
 - `run_themefinder.py`
-  - Runs the ThemeFinder pipeline locally.
+  - Earlier prototype or example ThemeFinder run.
 
 - `src/metrics.py`
   - Evaluation metrics such as precision, recall, F1, and bootstrap confidence intervals.
@@ -80,7 +89,25 @@ We want to:
 4. Manually review the rows flagged `flag_for_review`.
 5. Remove all flagged rows from the final dataset.
 6. Keep a filtered file containing only `llm_label == "keep"`.
-7. Use this reviewed file as the basis for the final gold dataset and downstream evaluation.
+7. Use this reviewed file as the basis for the final gold dataset.
+8. Prepare a ThemeFinder input CSV if needed.
+9. Run `python run_themefinder_test.py`.
+10. Run `python compare_themefinder_gold.py`.
+    - This compares the ThemeFinder output against the gold set.
+    - The comparison uses the ThemeFinder topic taxonomy (A-H) for the mock benchmark.
+11. Save and review the Markdown report written to `runs/*.md`.
+
+## How to interpret the metrics
+
+The comparison script reports per-theme precision, recall, and F1 for the ThemeFinder topic IDs.
+
+- A good score is typically above about 0.3-0.5 F1 for well-supported themes.
+- Very low or zero scores often mean one of two things:
+  - the theme is rare in the gold data,
+  - the model is clustering comments differently from the human coding.
+- In this mock setup, the key thing is to keep the gold data and model labels in the same taxonomy before comparing them.
+
+For the mock benchmark, ThemeFinder’s own A-H output is the comparison target, and the human labels are mapped into that same space before scoring.
 
 ## Best practice for filtering out flagged rows
 
@@ -121,8 +148,10 @@ ollama pull llama3.1
 - [x] Balanced sample created for annotation
 - [x] Local LLM review pipeline built and run
 - [x] Flagged rows reviewed and removed from the final cleaned set
-- [ ] Final hand-labelled gold set produced
-- [ ] ThemeFinder evaluated against the gold set
+- [x] Gold review set produced
+- [x] ThemeFinder run executed and JSON output saved in `runs/`
+- [x] ThemeFinder output compared against the gold set using the ThemeFinder taxonomy
+- [ ] Refine theme clustering or taxonomy mapping if a more human-friendly benchmark is needed
 - [ ] LLM-as-a-judge comparison completed
 
 ## Notes
