@@ -58,13 +58,17 @@ We want to:
 ### Evaluation and comparison
 
 - `run_themefinder_test.py`
-  - Runs the project-specific ThemeFinder pipeline against `data/golden/themefinder_input.csv`.
+  - Runs the project-specific ThemeFinder pipeline against the cleaned comment-only input in `data/golden/themefinder_input.csv`.
   - Saves the JSON output into `runs/`.
 
 - `compare_themefinder_gold.py`
   - Reads the most recent ThemeFinder JSON output and compares it against the reviewed gold set.
-  - Maps the human gold themes into the ThemeFinder topic taxonomy (A-H) before scoring.
+  - Aligns rows by `response_id` and maps output labels onto a stable human-readable theme codebook before scoring.
   - Prints the per-theme precision/recall/F1 values and writes a Markdown report into `runs/*.md`.
+
+- `eval_pydantic.py`
+  - Offline evaluation wrapper built with `pydantic-evals`.
+  - Uses the reviewed gold data and saved ThemeFinder output to compute per-theme evaluation metrics.
 
 - `compare_runs.py`
   - Compares ThemeFinder outputs across runs.
@@ -90,12 +94,13 @@ We want to:
 5. Remove all flagged rows from the final dataset.
 6. Keep a filtered file containing only `llm_label == "keep"`.
 7. Use this reviewed file as the basis for the final gold dataset.
-8. Prepare a ThemeFinder input CSV if needed.
+8. Build the cleaned comment-only ThemeFinder input in `data/golden/themefinder_input.csv`.
+   - This input uses only the comment text and aligns rows by `response_id` to the reviewed gold dataset.
 9. Run `python run_themefinder_test.py`.
 10. Run `python compare_themefinder_gold.py`.
-    - This compares the ThemeFinder output against the gold set.
-    - The comparison uses the ThemeFinder topic taxonomy (A-H) for the mock benchmark.
-11. Save and review the Markdown report written to `runs/*.md`.
+    - This compares the ThemeFinder output against the gold set using `response_id` alignment and a stable codebook mapping.
+11. Optionally run the offline `pydantic-evals` evaluation wrapper via `python eval_pydantic.py`.
+12. Save and review the Markdown report written to `runs/*.md`.
 
 ## How to interpret the metrics
 
@@ -111,7 +116,7 @@ The comparison script reports per-theme precision, recall, and F1 for the ThemeF
 
 The comparison script produces a per-theme summary showing precision, recall, F1, and a bootstrap 95% interval for F1. This makes it easier to see whether a weak theme score is a genuine modelling failure or simply a rare theme with low support in the reviewed data.
 
-For the mock benchmark, ThemeFinder’s own A-H output is the comparison target, and the human labels are mapped into that same space before scoring.
+The current evaluation pipeline compares ThemeFinder output to the reviewed human labels by aligning on `response_id` and mapping the model’s labels into the project’s stable theme codebook. This avoids run-specific Topic A–H drift and keeps the benchmark anchored to the actual consultation taxonomy used in the gold dataset.
 
 ## Best practice for filtering out flagged rows
 
@@ -153,8 +158,10 @@ ollama pull llama3.1
 - [x] Local LLM review pipeline built and run
 - [x] Flagged rows reviewed and removed from the final cleaned set
 - [x] Gold review set produced
+- [x] Clean comment-only ThemeFinder input prepared and aligned by `response_id`
 - [x] ThemeFinder run executed and JSON output saved in `runs/`
-- [x] ThemeFinder output compared against the gold set using the ThemeFinder taxonomy
+- [x] ThemeFinder output compared against the gold set using a stable theme codebook
+- [x] Offline `pydantic-evals` evaluation wrapper added
 - [ ] Refine theme clustering or taxonomy mapping if a more human-friendly benchmark is needed
 - [ ] LLM-as-a-judge comparison completed
 
