@@ -18,13 +18,8 @@ import pandas as pd
 from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 
-from compare_themefinder_gold import GOLD_TO_THEMEFINDER_ID, latest_themefinder_json
+from compare_themefinder_gold import latest_themefinder_json, map_themefinder_label_to_codebook
 from src.metrics import f1, precision, recall
-
-
-THEMEFINDER_ID_TO_GOLD = {
-    value: key for key, value in GOLD_TO_THEMEFINDER_ID.items() if value is not None
-}
 
 
 def normalize_text(value: str | None) -> str:
@@ -32,21 +27,8 @@ def normalize_text(value: str | None) -> str:
     return " ".join(str(value or "").strip().split())
 
 
-def extract_comment_from_response_text(response_text: str | None) -> str:
-    """Pull the raw comment out of the ThemeFinder response payload."""
-    text = str(response_text or "")
-    match = re.search(r"Comment:\s*(.*)$", text, flags=re.DOTALL)
-    if match:
-        return normalize_text(match.group(1))
-    return normalize_text(text)
-
-
 def load_gold_cases(csv_path: str | Path) -> tuple[list[Case[str, set[str], None]], list[str]]:
-    """Build dataset cases from the reviewed gold CSV.
-
-    The saved ThemeFinder JSON does not reliably line up by numeric response_id,
-    so we match on comment text instead; the case names still use the ResponseID.
-    """
+    """Build dataset cases from the reviewed gold CSV."""
     df = pd.read_csv(csv_path)
     cases: list[Case[str, set[str], None]] = []
     all_themes: set[str] = set()
@@ -79,56 +61,52 @@ def assert_input_matches_gold(
     gold_cases: list[Case[str, set[str], None]],
     input_csv_path: str | Path,
 ) -> None:
-    """Assert each saved ThemeFinder input comment matches the gold comment."""
-    saved_comments: set[str] = set()
+    """Assert each saved ThemeFinder input row matches the reviewed gold IDs."""
+    saved_response_ids: set[int] = set()
     with open(input_csv_path, "r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
-            saved_comments.add(extract_comment_from_response_text(row.get("response")))
+            response_id = row.get("response_id")
+            if response_id is not None:
+                saved_response_ids.add(int(response_id))
 
-    assert len(saved_comments) == len(gold_cases), (
-        "The saved ThemeFinder input rows should match the reviewed gold rows one-for-one. "
-        "We intentionally ignore the raw response_id because the input file and gold file "
-        "are offset by one in some runs."
+    gold_ids = {int(case.name) for case in gold_cases}
+    assert saved_response_ids == gold_ids, (
+        "The saved ThemeFinder input rows should match the reviewed gold rows by response_id."
     )
 
-    for case in gold_cases:
-        assert case.inputs in saved_comments, (
-            f"Comment for ResponseID {case.name} was not found in the saved ThemeFinder input. "
-            f"This check intentionally matches on text, not on the raw response_id."
-        )
 
-
-def build_prediction_lookup(json_path: str | Path) -> dict[str, set[str]]:
-    """Map each saved ThemeFinder response comment to the gold theme names it predicts."""
+def build_prediction_lookup(json_path: str | Path) -> dict[int, set[str]]:
+    """Map each saved ThemeFinder response_id to the human gold theme names it predicts."""
     with open(json_path, "r", encoding="utf-8") as handle:
         data = json.load(handle)
 
-    lookup: dict[str, set[str]] = {}
+    theme_descriptions = {
+        row.get("topic_id"): normalize_text(row.get("topic", ""))
+        for row in data.get("result", {}).get("themes", [])
+        if row.get("topic_id") is not None
+    }
+
+    lookup: dict[int, set[str]] = {}
     for row in data.get("result", {}).get("mapping", []):
-        response_text = row.get("response", "")
-        comment = extract_comment_from_response_text(response_text)
+        response_id = row.get("response_id")
         labels = row.get("labels") or []
+        if response_id is None:
+            continue
 
-        mapped = set()
+        mapped: set[str] = set()
         for label in labels:
-            gold_theme = THEMEFINDER_ID_TO_GOLD.get(label)
-            if gold_theme is not None:
-                mapped.add(gold_theme)
+            mapped.update(map_themefinder_label_to_codebook(label, theme_descriptions))
 
-        if comment:
-            lookup[comment] = mapped
+        lookup[int(response_id)] = mapped
 
     return lookup
 
 
-PREDICTIONS_BY_COMMENT = build_prediction_lookup(latest_themefinder_json("runs"))
-
-
-def task(response_text: str) -> set[str]:
+def task(response_id: int) -> set[str]:
     """Return the gold-theme prediction set for one response using the saved run."""
-    comment = extract_comment_from_response_text(response_text)
-    return PREDICTIONS_BY_COMMENT.get(comment, set())
+    predictions_by_id = build_prediction_lookup(latest_themefinder_json("runs"))
+    return predictions_by_id.get(int(response_id), set())
 
 
 @dataclass
@@ -187,15 +165,19 @@ def main() -> None:
     gold_cases, theme_names = load_gold_cases(gold_csv)
     assert_input_matches_gold(gold_cases, input_csv)
 
+    predictions_by_case = {case.name: task(int(case.name)) for case in gold_cases}
+
     dataset = Dataset(
         name="ThemeFinder offline mapping evaluation",
         cases=gold_cases,
         evaluators=[ThemeF1(theme_names=theme_names)],
     )
-    report = dataset.evaluate_sync(task, progress=False, name="ThemeFinder theme mapping")
+    report = dataset.evaluate_sync(
+        lambda case: predictions_by_case.get(str(case.name), set()),
+        progress=False,
+        name="ThemeFinder theme mapping",
+    )
     print(report)
-
-    predictions_by_case = {case.name: task(case.inputs) for case in gold_cases}
     print("\nPer-theme precision / recall / F1 (sorted by gold examples, smallest first):")
     print(f"{'theme':<45} {'gold':>5} {'pred':>5} {'precision':>10} {'recall':>10} {'f1':>10}")
     print("-" * 95)

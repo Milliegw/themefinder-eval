@@ -7,33 +7,70 @@ import pandas as pd
 
 from src.metrics import bootstrap_ci, f1, precision, recall
 
-# In this mock setup, we treat the ThemeFinder topic IDs as the official taxonomy.
-# Gold labels are then mapped onto those IDs before scoring.
-THEMEFINDER_TOPIC_LABELS = {
-    "A": "Youth engagement and support",
-    "B": "Cultural preservation and civic pride",
-    "C": "Community safety and wellbeing",
-    "D": "Community engagement and transparency",
-    "E": "Affordable housing and economic development",
-    "F": "Transportation and infrastructure improvements",
-    "G": "Environmental sustainability and health",
-    "H": "Health and wellbeing services",
+# Use a stable codebook for the final taxonomy rather than the run-specific topic IDs
+# emitted by ThemeFinder. The model's A–H labels can change between runs, so our
+# evaluation should anchor on the human theme names we actually care about.
+THEME_CODEBOOK = {
+    "Children and young people": {"children", "young", "youth", "school", "academy", "nursery"},
+    "Education and skills": {"education", "school", "skills", "teacher", "academies"},
+    "Community and local services": {"community", "local services", "support", "signposting", "families"},
+    "Community safety and crime": {"safety", "crime", "policing", "anti-social", "violence"},
+    "Public services and council delivery": {"council", "public services", "service delivery", "delivery", "department"},
+    "Housing and homelessness": {"housing", "homeless", "affordable housing", "accommodation", "rent"},
+    "Jobs and local economy": {"jobs", "economy", "employment", "business", "local economy"},
+    "Transport and travel": {"transport", "travel", "roads", "cycling", "car", "accessibility"},
+    "Environment and climate": {"environment", "climate", "waste", "recycling", "green", "zero waste"},
+    "Health and wellbeing": {"health", "wellbeing", "mental health", "food", "hospital", "care"},
+    "Equality, inclusion, and access": {"equality", "inclusion", "access", "disabled", "accessible"},
 }
 
-GOLD_TO_THEMEFINDER_ID = {
-    "Children and young people": "A",
-    "Education and skills": "A",
-    "Community and local services": "B",
-    "Community safety and crime": "C",
-    "Public services and council delivery": "D",
-    "Housing and homelessness": "E",
-    "Jobs and local economy": "E",
-    "Transport and travel": "F",
-    "Environment and climate": "G",
-    "Health and wellbeing": "H",
-    "Equality, inclusion, and access": "D",
-    "Other / unclear": None,
-}
+# Compatibility aliases for the earlier A-H mapping approach. We intentionally keep
+# the theme names stable and human-readable rather than depending on the run-specific
+# labels emitted by ThemeFinder itself.
+GOLD_TO_THEMEFINDER_ID = {theme_name: theme_name for theme_name in THEME_CODEBOOK}
+THEMEFINDER_TOPIC_LABELS = {theme_name: theme_name for theme_name in THEME_CODEBOOK}
+
+
+def normalize_theme_name(value: object) -> str:
+    text = str(value or "").strip()
+    return " ".join(text.split())
+
+
+def map_themefinder_label_to_codebook(label: object, theme_descriptions: dict[str, str]) -> set[str]:
+    raw_label = normalize_theme_name(label)
+    if not raw_label:
+        return set()
+
+    label_key = raw_label.lower()
+    description = " ".join(
+        normalize_theme_name(theme_descriptions.get(raw_label, "")).split()
+    )
+    haystack = f"{raw_label} {description}".lower()
+
+    scored_matches: list[tuple[int, str]] = []
+    for theme_name, keywords in THEME_CODEBOOK.items():
+        score = 0
+        if theme_name.lower() == label_key:
+            score += 100
+        if theme_name.lower() in haystack:
+            score += 30
+        for keyword in keywords:
+            kw = keyword.lower()
+            if kw in haystack:
+                score += len(kw) + (4 if len(kw.split()) > 1 else 0)
+        if score > 0:
+            scored_matches.append((score, theme_name))
+
+    if scored_matches:
+        top_score = max(score for score, _ in scored_matches)
+        winners = {theme_name for score, theme_name in scored_matches if score == top_score}
+        return winners
+
+    # Falls back to a direct lookup for a human theme name that is already in the codebook.
+    if raw_label in THEME_CODEBOOK:
+        return {raw_label}
+
+    return set()
 
 
 def latest_themefinder_json(runs_dir: str | Path = "runs") -> Path:
@@ -48,14 +85,23 @@ def load_model_predictions(json_path: str | Path) -> dict[int, set[str]]:
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
+    theme_descriptions = {
+        row.get("topic_id"): normalize_theme_name(row.get("topic", ""))
+        for row in data.get("result", {}).get("themes", [])
+        if row.get("topic_id") is not None
+    }
+
     predictions: dict[int, set[str]] = {}
     for row in data.get("result", {}).get("mapping", []):
         response_id = row.get("response_id")
         if response_id is None:
             continue
+
         labels = row.get("labels", []) or []
-        labels = set(label for label in labels if label in THEMEFINDER_TOPIC_LABELS)
-        predictions[int(response_id)] = labels
+        mapped: set[str] = set()
+        for label in labels:
+            mapped.update(map_themefinder_label_to_codebook(label, theme_descriptions))
+        predictions[int(response_id)] = mapped
 
     return predictions
 
@@ -74,11 +120,9 @@ def load_gold_labels(csv_path: str | Path) -> dict[int, set[str]]:
             value = row.get(column)
             if pd.isna(value):
                 continue
-            cleaned = str(value).strip()
-            if cleaned and cleaned.lower() != "nan":
-                mapped = GOLD_TO_THEMEFINDER_ID.get(cleaned)
-                if mapped:
-                    themes.add(mapped)
+            cleaned = normalize_theme_name(value)
+            if cleaned and cleaned.lower() != "nan" and cleaned != "Other / unclear":
+                themes.add(cleaned)
 
         gold[int(response_id)] = themes
 
@@ -92,7 +136,10 @@ def format_theme_ids(themes: set[str]) -> str:
 
 
 def display_theme_name(theme_id: str) -> str:
-    return f"{theme_id} ({THEMEFINDER_TOPIC_LABELS.get(theme_id, theme_id)})"
+    label = THEMEFINDER_TOPIC_LABELS.get(theme_id, theme_id)
+    if label == theme_id:
+        return str(theme_id)
+    return f"{theme_id} ({label})"
 
 
 def print_side_by_side(predictions: dict[int, set[str]], gold: dict[int, set[str]], max_rows: int = 20) -> None:
