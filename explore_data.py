@@ -127,6 +127,39 @@ def main():
     print(sample.head())
 
 
+def build_themefinder_input(gold_df: pd.DataFrame) -> pd.DataFrame:
+    """Create the ThemeFinder input from the reviewed gold set using aligned response ids."""
+    required_columns = {"ResponseID", "Outcome", "Question", "Comment"}
+    missing = required_columns - set(gold_df.columns)
+    if missing:
+        raise ValueError(f"Gold data is missing required columns: {sorted(missing)}")
+
+    input_df = gold_df[["ResponseID", "Outcome", "Question", "Comment"]].copy()
+    input_df = input_df.rename(columns={"ResponseID": "response_id"})
+    input_df["response"] = (
+        "Outcome: "
+        + input_df["Outcome"].fillna("").astype(str).str.strip()
+        + "\nQuestion: "
+        + input_df["Question"].fillna("").astype(str).str.strip()
+        + "\nComment: "
+        + input_df["Comment"].fillna("").astype(str).str.strip()
+    )
+    return input_df[["response_id", "response"]]
+
+
+def generate_themefinder_input(
+    gold_path: str | Path = "data/golden/initial_annotation_sample_reviewed.csv",
+    output_path: str | Path = "data/golden/themefinder_input.csv",
+) -> pd.DataFrame:
+    """Write a ThemeFinder input CSV aligned exactly to the reviewed gold file."""
+    gold_df = pd.read_csv(gold_path)
+    themed_df = build_themefinder_input(gold_df)
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    themed_df.to_csv(output, index=False)
+    return themed_df
+
+
 if __name__ == "__main__":
     main()
 
