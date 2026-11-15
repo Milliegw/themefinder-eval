@@ -128,22 +128,20 @@ def main():
 
 
 def build_themefinder_input(gold_df: pd.DataFrame) -> pd.DataFrame:
-    """Create the ThemeFinder input from the reviewed gold set using aligned response ids."""
-    required_columns = {"ResponseID", "Outcome", "Question", "Comment"}
+    """Create the ThemeFinder input from the reviewed gold set using aligned response ids.
+
+    ThemeFinder should be scored on the comment text only. The question is passed
+    separately to the model at runtime, so we do not leak the outcome or question
+    into the per-response input text.
+    """
+    required_columns = {"ResponseID", "Comment"}
     missing = required_columns - set(gold_df.columns)
     if missing:
         raise ValueError(f"Gold data is missing required columns: {sorted(missing)}")
 
-    input_df = gold_df[["ResponseID", "Outcome", "Question", "Comment"]].copy()
+    input_df = gold_df[["ResponseID", "Comment"]].copy()
     input_df = input_df.rename(columns={"ResponseID": "response_id"})
-    input_df["response"] = (
-        "Outcome: "
-        + input_df["Outcome"].fillna("").astype(str).str.strip()
-        + "\nQuestion: "
-        + input_df["Question"].fillna("").astype(str).str.strip()
-        + "\nComment: "
-        + input_df["Comment"].fillna("").astype(str).str.strip()
-    )
+    input_df["response"] = input_df["Comment"].fillna("").astype(str).str.strip()
     return input_df[["response_id", "response"]]
 
 

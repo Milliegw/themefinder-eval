@@ -101,11 +101,15 @@ We want to:
 
 The comparison script reports per-theme precision, recall, and F1 for the ThemeFinder topic IDs.
 
-- A good score is typically above about 0.3-0.5 F1 for well-supported themes.
+- A good score is typically materially above 0.0 F1 for a theme that is well-supported in the gold data, and the value will vary by how common the theme is and how clearly the model separates it from nearby classes.
 - Very low or zero scores often mean one of two things:
   - the theme is rare in the gold data,
   - the model is clustering comments differently from the human coding.
 - In this mock setup, the key thing is to keep the gold data and model labels in the same taxonomy before comparing them.
+
+## Results and findings
+
+The comparison script produces a per-theme summary showing precision, recall, F1, and a bootstrap 95% interval for F1. This makes it easier to see whether a weak theme score is a genuine modelling failure or simply a rare theme with low support in the reviewed data.
 
 For the mock benchmark, ThemeFinder’s own A-H output is the comparison target, and the human labels are mapped into that same space before scoring.
 

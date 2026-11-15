@@ -38,4 +38,4 @@ def test_input_and_gold_align():
 
     assert len(joined) == len(gold_df)
     assert set(input_df["response_id"]) == set(gold_df["ResponseID"])
-    assert all(str(comment).strip() in str(response).strip() for comment, response in zip(joined["Comment"], joined["response"]))
+    assert all(str(comment).strip() == str(response).strip() for comment, response in zip(joined["Comment"], joined["response"]))

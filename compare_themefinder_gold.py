@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.metrics import f1, precision, recall
+from src.metrics import bootstrap_ci, f1, precision, recall
 
 # In this mock setup, we treat the ThemeFinder topic IDs as the official taxonomy.
 # Gold labels are then mapped onto those IDs before scoring.
@@ -134,8 +134,8 @@ def build_markdown_report(
         "",
         "## Per-theme metrics",
         "",
-        "| Theme | Label | Precision | Recall | F1 |",
-        "| --- | --- | ---: | ---: | ---: |",
+        "| Theme | Label | Precision | Recall | F1 | F1 95% CI |",
+        "| --- | --- | ---: | ---: | ---: | ---: |",
     ]
 
     for theme in all_themes:
@@ -144,7 +144,10 @@ def build_markdown_report(
         p = precision(y_true, y_pred)
         r = recall(y_true, y_pred)
         f = f1(y_true, y_pred)
-        lines.append(f"| {theme} | {display_theme_name(theme)} | {p:.3f} | {r:.3f} | {f:.3f} |")
+        low, high = bootstrap_ci(y_true, y_pred, f1)
+        lines.append(
+            f"| {theme} | {display_theme_name(theme)} | {p:.3f} | {r:.3f} | {f:.3f} | ({low:.3f}, {high:.3f}) |"
+        )
 
     lines.extend([
         "",
@@ -214,8 +217,12 @@ def print_metrics(predictions: dict[int, set[str]], gold: dict[int, set[str]]) -
         p = precision(y_true, y_pred)
         r = recall(y_true, y_pred)
         f = f1(y_true, y_pred)
+        low, high = bootstrap_ci(y_true, y_pred, f1)
 
-        print(f"{theme:<8} {display_theme_name(theme):<45} precision={p:.3f} recall={r:.3f} f1={f:.3f}")
+        print(
+            f"{theme:<8} {display_theme_name(theme):<45} precision={p:.3f} "
+            f"recall={r:.3f} f1={f:.3f} f1_95ci=({low:.3f}, {high:.3f})"
+        )
 
     # Simple overall counts for context
     print()
